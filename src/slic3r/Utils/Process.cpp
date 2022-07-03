@@ -39,6 +39,22 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 #ifdef _WIN32
 	wxString path;
 	wxFileName::SplitPath(wxStandardPaths::Get().GetExecutablePath(), &path, nullptr, nullptr, wxPATH_NATIVE);
+	//check directory exist
+	if (!boost::filesystem::is_directory(boost::filesystem::wpath(path.ToStdWstring()))) {
+		BOOST_LOG_TRIVIAL(info) << "Fail to find directory \"" << path << "\", trying another method.";
+		//try an other way
+		std::vector<wchar_t> pathBuf;
+		DWORD copied = 0;
+		do {
+			pathBuf.resize(pathBuf.size() + MAX_PATH);
+			copied = GetModuleFileName(0, pathBuf.data(), pathBuf.size());
+		} while (copied >= pathBuf.size());
+		pathBuf.resize(copied);
+		std::wstring path2(pathBuf.begin(), pathBuf.end());
+		boost::filesystem::wpath boostpath(path2);
+		BOOST_LOG_TRIVIAL(info) << "get current path: \"" << into_u8(path2) << "\" which is in dir \""<< boostpath.parent_path().wstring() <<"\"";
+		path = boostpath.parent_path().wstring();
+	}
 	path += "\\";
 	path += (instance_type == NewSlicerInstanceType::Slicer) ? SLIC3R_APP_CMD ".exe" : GCODEVIEWER_APP_CMD ".exe";
 	std::vector<const wchar_t*> args;
@@ -49,16 +65,17 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 			args.emplace_back(file);
 	}
     if (instance_type == NewSlicerInstanceType::Slicer && single_instance)
-        args.emplace_back(L"--single-instance");
-    args.emplace_back(L"--datadir");
-    args.emplace_back(boost::nowide::widen(Slic3r::data_dir().c_str()).c_str());
-	args.emplace_back(nullptr);
-	BOOST_LOG_TRIVIAL(info) << "Trying to spawn a new slicer \"" << into_u8(path) << "\"";
+        args.push_back(L"--single-instance");
+    args.push_back(L"--datadir");
+	std::wstring wide_datadir = boost::nowide::widen((Slic3r::data_dir()).c_str());
+	args.push_back(wide_datadir.c_str());
+	args.push_back(nullptr);
+	BOOST_LOG_TRIVIAL(info) << "Trying to spawn a new slicer '" << into_u8(path) << "'";
 	// Don't call with wxEXEC_HIDE_CONSOLE, PrusaSlicer in GUI mode would just show the splash screen. It would not open the main window though, it would
 	// just hang in the background.
 	if (wxExecute(const_cast<wchar_t**>(args.data()), wxEXEC_ASYNC) <= 0)
 		BOOST_LOG_TRIVIAL(error) << "Failed to spawn a new slicer \"" << into_u8(path);
-#else 
+#else  // Win32 (else not)
 	// Own executable path.
 	boost::filesystem::path bin_path = into_path(wxStandardPaths::Get().GetExecutablePath());
 #if defined(__APPLE__)
@@ -80,6 +97,8 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 			}
 			if (instance_type == NewSlicerInstanceType::Slicer && single_instance)
 				args.emplace_back("--single-instance");
+			args.push_back("--datadir");
+			args.push_back((Slic3r::data_dir()));
 			boost::process::spawn(bin_path, args);
 		    // boost::process::spawn() sets SIGCHLD to SIGIGN for the child process, thus if a child PrusaSlicer spawns another
 		    // subprocess and the subrocess dies, the child PrusaSlicer will not receive information on end of subprocess
@@ -124,6 +143,9 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 		}
 		if (instance_type == NewSlicerInstanceType::Slicer && single_instance)
 			args.emplace_back("--single-instance");
+		args.push_back("--datadir");
+		std::string datadir_path = (Slic3r::data_dir());
+		args.push_back(datadir_path.c_str());
 		args.emplace_back(nullptr);
 		BOOST_LOG_TRIVIAL(info) << "Trying to spawn a new slicer \"" << args[0] << "\"";
 		if (wxExecute(const_cast<char**>(args.data()), wxEXEC_ASYNC | wxEXEC_MAKE_GROUP_LEADER) <= 0)

@@ -44,6 +44,9 @@ struct FillParams
     // Fill density, fraction in <0, 1>
     float       density     { 0.f };
 
+    // bridge offset from the centerline.
+    coord_t       bridge_offset = -1;
+
     // Fill extruding flow multiplier, fraction in <0, 1>. Used by "over bridge compensation"
     float       flow_mult   { 1.0f };
 
@@ -80,6 +83,9 @@ struct FillParams
 
     //full configuration for the region, to avoid copying every bit that is needed. Use this for process-specific parameters.
     PrintRegionConfig const *config{ nullptr };
+
+    // Zero based extruder ID.
+    unsigned int    extruder = 0;
 };
 static_assert(IsTriviallyCopyable<FillParams>::value, "FillParams class is not POD (and it should be - see constructor).");
 
@@ -108,7 +114,7 @@ public:
     FillAdaptive::Octree* adapt_fill_octree = nullptr;
 protected:
     // in unscaled coordinates, please use init (after settings all others settings) as some algos want to modify the value
-    coordf_t    spacing_priv;
+    double    spacing_priv;
 
 public:
     virtual ~Fill() {}
@@ -118,8 +124,8 @@ public:
     static Fill* new_from_type(const std::string &type);
 
     void         set_bounding_box(const Slic3r::BoundingBox &bbox) { bounding_box = bbox; }
-    virtual void init_spacing(coordf_t spacing, const FillParams &params) { this->spacing_priv = spacing;  }
-    coordf_t get_spacing() const { return spacing_priv; }
+    virtual void init_spacing(double spacing, const FillParams &params) { this->spacing_priv = spacing;  }
+    double get_spacing() const { return spacing_priv; }
 
     // Do not sort the fill lines to optimize the print head path?
     virtual bool no_sort() const { return false; }
@@ -181,7 +187,7 @@ public:
     //for rectilinear
     static void connect_infill(Polylines&& infill_ordered, const ExPolygon& boundary, const Polygons& polygons_src, Polylines& polylines_out, const double spacing, const FillParams& params);
 
-    static coord_t  _adjust_solid_spacing(const coord_t width, const coord_t distance);
+    static coord_t  _adjust_solid_spacing(const coord_t width, const coord_t distance, const double factor_max = 1.2);
 
     // Align a coordinate to a grid. The coordinate may be negative,
     // the aligned value will never be bigger than the original one.
@@ -224,7 +230,7 @@ public:
     void use(ExtrusionMultiPath &multipath) override { for (ExtrusionPath path : multipath.paths) path.set_role(new_role); }
     void use(ExtrusionMultiPath3D &multipath) override { for (ExtrusionPath path : multipath.paths) path.set_role(new_role); }
     void use(ExtrusionLoop &loop) override { for (ExtrusionPath path : loop.paths) path.set_role(new_role); }
-    void use(ExtrusionEntityCollection &collection) override { for (ExtrusionEntity *entity : collection.entities) entity->visit(*this); }
+    void use(ExtrusionEntityCollection &collection) override { for (ExtrusionEntity *entity : collection.entities()) entity->visit(*this); }
 };
 
 } // namespace Slic3r

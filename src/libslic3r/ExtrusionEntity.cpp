@@ -55,9 +55,11 @@ double ExtrusionPath::length() const
 
 void ExtrusionPath::_inflate_collection(const Polylines &polylines, ExtrusionEntityCollection* collection) const
 {
+    ExtrusionEntitiesPtr to_add;
     for (const Polyline &polyline : polylines)
-        collection->entities.emplace_back(new ExtrusionPath(polyline, *this));
-    }
+        to_add.emplace_back(new ExtrusionPath(polyline, *this));
+    collection->append(std::move(to_add));
+}
 
 void ExtrusionPath::polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const
 {
@@ -213,21 +215,25 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang)
     this->split_at_vertex(p);
 }
 
-void ExtrusionLoop::clip_end(double distance, ExtrusionPaths* paths) const
+ExtrusionPaths clip_end(ExtrusionPaths& paths, double distance)
 {
-    *paths = this->paths;
+    ExtrusionPaths removed;
     
-    while (distance > 0 && !paths->empty()) {
-        ExtrusionPath &last = paths->back();
+    while (distance > 0 && !paths.empty()) {
+        ExtrusionPath& last = paths.back();
+        removed.push_back(last);
         double len = last.length();
         if (len <= distance) {
-            paths->pop_back();
+            paths.pop_back();
             distance -= len;
         } else {
             last.polyline.clip_end(distance);
+            removed.back().polyline.clip_start(removed.back().polyline.length() - distance);
             break;
         }
     }
+    std::reverse(removed.begin(), removed.end());
+    return removed;
 }
 
 bool ExtrusionLoop::has_overhang_point(const Point &point) const
@@ -372,19 +378,19 @@ void ExtrusionPrinter::use(const ExtrusionLoop &loop) {
 }
 void ExtrusionPrinter::use(const ExtrusionEntityCollection &collection) {
     ss << "ExtrusionEntityCollection:" << (uint16_t)collection.role() << "{";
-    for (int i = 0; i < collection.entities.size(); i++) {
+    for (int i = 0; i < collection.entities().size(); i++) {
         if (i != 0) ss << ",";
-        collection.entities[i]->visit(*this);
+        collection.entities()[i]->visit(*this);
     }
-    if(collection.no_sort) ss<<", no_sort=true";
+    if(!collection.can_sort()) ss<<", no_sort=true";
     ss << "}";
 }
 
 
 void ExtrusionLength::default_use(const ExtrusionEntity& entity) { dist += entity.length(); };
 void ExtrusionLength::use(const ExtrusionEntityCollection& collection) {
-    for (int i = 0; i < collection.entities.size(); i++) {
-        collection.entities[i]->visit(*this);
+    for (int i = 0; i < collection.entities().size(); i++) {
+        collection.entities()[i]->visit(*this);
     }
 }
 
@@ -405,7 +411,7 @@ void ExtrusionVisitorRecursiveConst::use(const ExtrusionLoop& loop) {
     }
 }
 void ExtrusionVisitorRecursiveConst::use(const ExtrusionEntityCollection& collection) {
-    for (const ExtrusionEntity* entity : collection.entities) {
+    for (const ExtrusionEntity* entity : collection.entities()) {
         entity->visit(*this);
     }
 }

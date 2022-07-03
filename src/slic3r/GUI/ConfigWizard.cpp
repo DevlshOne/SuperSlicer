@@ -214,10 +214,10 @@ PrinterPicker::PrinterPicker(wxWindow *parent, const VendorProfile &vendor, wxSt
         std::string icon_path = (model.thumbnail.empty()) ?
             ("/" + model.id + "_thumbnail.png") :
             ("/" + model.thumbnail);
-        if (!load_bitmap(GUI::from_u8(Slic3r::data_dir() + "/vendor/" + vendor.id + icon_path), bitmap, bitmap_width)) {
-            if (!load_bitmap(GUI::from_u8(Slic3r::resources_dir() + "/profiles/" + vendor.id + icon_path), bitmap, bitmap_width)) {
+        if (!load_bitmap(GUI::from_u8((boost::filesystem::path(Slic3r::data_dir()) / "vendor" / (vendor.id + icon_path)).string()), bitmap, bitmap_width)) {
+            if (!load_bitmap(GUI::from_u8((boost::filesystem::path(Slic3r::resources_dir()) / "profiles" / ( vendor.id + icon_path)).string() ), bitmap, bitmap_width)) {
             BOOST_LOG_TRIVIAL(warning) << boost::format("Can't find bitmap file `%1%` for vendor `%2%`, printer `%3%`, using placeholder icon instead")
-                    % (Slic3r::resources_dir() + "/profiles/" + vendor.id + "/" + model.id + "_thumbnail.png")
+                    % ((boost::filesystem::path(Slic3r::resources_dir()) / "profiles" / vendor.id / (model.id + "_thumbnail.png")).string())
                 % vendor.id
                 % model.id;
                 load_bitmap(Slic3r::var(PRINTER_PLACEHOLDER), bitmap, bitmap_width);
@@ -1408,9 +1408,9 @@ void PageDiameters::apply_custom_config(DynamicPrintConfig &config)
 {
 
     auto *opt_nozzle = new ConfigOptionFloats(1, spin_nozzle->GetValue());
-    config.set_key_value("nozzle_diameter", opt_nozzle);
+    config.set_key_value("nozzle_diameter", opt_nozzle->set_is_extruder_size(true));
     auto *opt_filam = new ConfigOptionFloats(1, spin_filam->GetValue());
-    config.set_key_value("filament_diameter", opt_filam);
+    config.set_key_value("filament_diameter", opt_filam->set_is_extruder_size(true));
 
     config.set_key_value("extrusion_width", new ConfigOptionFloatOrPercent(105, true));
     config.set_key_value("first_layer_extrusion_width", new ConfigOptionFloatOrPercent(140, true));
@@ -1487,13 +1487,13 @@ PageTemperatures::PageTemperatures(ConfigWizard *parent)
 void PageTemperatures::apply_custom_config(DynamicPrintConfig &config)
 {
     auto *opt_extr = new ConfigOptionInts(1, spin_extr->GetValue());
-    config.set_key_value("temperature", opt_extr);
+    config.set_key_value("temperature", opt_extr->set_is_extruder_size(true));
     auto *opt_extr1st = new ConfigOptionInts(1, spin_extr->GetValue());
-    config.set_key_value("first_layer_temperature", opt_extr1st);
+    config.set_key_value("first_layer_temperature", opt_extr1st->set_is_extruder_size(true));
     auto *opt_bed = new ConfigOptionInts(1, spin_bed->GetValue());
-    config.set_key_value("bed_temperature", opt_bed);
+    config.set_key_value("bed_temperature", opt_bed->set_is_extruder_size(true));
     auto *opt_bed1st = new ConfigOptionInts(1, spin_bed->GetValue());
-    config.set_key_value("first_layer_bed_temperature", opt_bed1st);
+    config.set_key_value("first_layer_bed_temperature", opt_bed1st->set_is_extruder_size(true));
 }
 
 

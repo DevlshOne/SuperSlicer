@@ -50,11 +50,11 @@ void CalibrationFlowDialog::create_geometry(float start, float delta) {
     }
 
     std::vector<size_t> objs_idx = plat->load_files(std::vector<std::string>{
-            Slic3r::resources_dir()+"/calibration/filament_flow/filament_flow_test_cube.amf",
-            Slic3r::resources_dir()+"/calibration/filament_flow/filament_flow_test_cube.amf",
-            Slic3r::resources_dir()+"/calibration/filament_flow/filament_flow_test_cube.amf",
-            Slic3r::resources_dir()+"/calibration/filament_flow/filament_flow_test_cube.amf",
-            Slic3r::resources_dir()+"/calibration/filament_flow/filament_flow_test_cube.amf"}, true, false, false);
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "filament_flow_test_cube.amf").string(),
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "filament_flow_test_cube.amf").string(),
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "filament_flow_test_cube.amf").string(),
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "filament_flow_test_cube.amf").string(),
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "filament_flow_test_cube.amf").string()}, true, false, false);
 
 
     assert(objs_idx.size() == 5);
@@ -78,7 +78,7 @@ void CalibrationFlowDialog::create_geometry(float start, float delta) {
     //do scaling
     if (xyScale < 0.9 || 1.2 < xyScale) {
         for (size_t i = 0; i < 5; i++)
-            model.objects[objs_idx[i]]->scale(xyScale, xyScale, zscale);
+            model.objects[objs_idx[i]]->scale(xyScale, xyScale, zscale); // base: 10 10 1
     } else {
         for (size_t i = 0; i < 5; i++)
             model.objects[objs_idx[i]]->scale(1, 1, zscale);
@@ -93,20 +93,20 @@ void CalibrationFlowDialog::create_geometry(float start, float delta) {
     */
     float zshift = -(zscale / 2) + ((first_layer_height + layer_height) / 2) + 0.3;
     if (delta == 10.f && start == 80.f) {
-        add_part(model.objects[objs_idx[0]], Slic3r::resources_dir()+"/calibration/filament_flow/m20.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
-        add_part(model.objects[objs_idx[1]], Slic3r::resources_dir()+"/calibration/filament_flow/m10.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
-        add_part(model.objects[objs_idx[2]], Slic3r::resources_dir()+"/calibration/filament_flow/_0.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
-        add_part(model.objects[objs_idx[3]], Slic3r::resources_dir()+"/calibration/filament_flow/p10.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
-        add_part(model.objects[objs_idx[4]], Slic3r::resources_dir()+"/calibration/filament_flow/p20.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
+        add_part(model.objects[objs_idx[0]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m20.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[1]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m10.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
+        add_part(model.objects[objs_idx[2]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "_0.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
+        add_part(model.objects[objs_idx[3]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "p10.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
+        add_part(model.objects[objs_idx[4]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "p20.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number });
     } else if (delta == 2.f && start == 92.f) {
-        add_part(model.objects[objs_idx[0]], Slic3r::resources_dir()+"/calibration/filament_flow/m8.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
-        add_part(model.objects[objs_idx[1]], Slic3r::resources_dir()+"/calibration/filament_flow/m6.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
-        add_part(model.objects[objs_idx[2]], Slic3r::resources_dir()+"/calibration/filament_flow/m4.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
-        add_part(model.objects[objs_idx[3]], Slic3r::resources_dir()+"/calibration/filament_flow/m2.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
-        add_part(model.objects[objs_idx[4]], Slic3r::resources_dir()+"/calibration/filament_flow/_0.amf", Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[0]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m8.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[1]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m6.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[2]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m4.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[3]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "m2.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
+        add_part(model.objects[objs_idx[4]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "_0.amf").string(), Vec3d{ 10 * xyScale,0,zshift }, Vec3d{ xyScale , xyScale, zscale_number});
     }
     for (size_t i = 0; i < 5; i++) {
-        add_part(model.objects[objs_idx[i]], Slic3r::resources_dir()+"/calibration/filament_flow/O.amf", Vec3d{ 0,0,zscale/2.f + 0.5 }, Vec3d{xyScale , xyScale, layer_height / 0.2});
+        add_part(model.objects[objs_idx[i]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_flow" / "O.amf").string(), Vec3d{ 0,0,zscale/2.f + 0.5 }, Vec3d{xyScale , xyScale, layer_height / 0.2}); // base: 0.2mm height
     }
 
     /// --- translate ---;
@@ -118,11 +118,11 @@ void CalibrationFlowDialog::create_geometry(float start, float delta) {
     Vec2d bed_min = BoundingBoxf(bed_shape->values).min;
     float offsetx = 3 + 20 * xyScale + extruder_clearance_radius->value + brim_width + (brim_width > extruder_clearance_radius->value ? brim_width - extruder_clearance_radius->value : 0);
     float offsety = 3 + 20 * xyScale + extruder_clearance_radius->value + brim_width + (brim_width > extruder_clearance_radius->value ? brim_width - extruder_clearance_radius->value : 0);
-    model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2 - offsety, 0 });
-    model.objects[objs_idx[1]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2          , 0 });
-    model.objects[objs_idx[2]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2 + offsety, 0 });
-    model.objects[objs_idx[3]]->translate({ bed_min.x() + bed_size.x() / 2 + offsetx / 2, bed_min.y() + bed_size.y() / 2 - offsety, 0 });
-    model.objects[objs_idx[4]]->translate({ bed_min.x() + bed_size.x() / 2 + offsetx / 2, bed_min.y() + bed_size.y() / 2 + offsety, 0 });
+    model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2 - offsety, zscale / 2 });
+    model.objects[objs_idx[1]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2          , zscale / 2 });
+    model.objects[objs_idx[2]]->translate({ bed_min.x() + bed_size.x() / 2 - offsetx / 2, bed_min.y() + bed_size.y() / 2 + offsety, zscale / 2 });
+    model.objects[objs_idx[3]]->translate({ bed_min.x() + bed_size.x() / 2 + offsetx / 2, bed_min.y() + bed_size.y() / 2 - offsety, zscale / 2 });
+    model.objects[objs_idx[4]]->translate({ bed_min.x() + bed_size.x() / 2 + offsetx / 2, bed_min.y() + bed_size.y() / 2 + offsety, zscale / 2 });
 
     // if not enough space, forget about complete_objects
     if (bed_size.y() < offsety * 2 + 25 * xyScale + brim_width || bed_size.x() < offsetx + 25 * xyScale + brim_width)

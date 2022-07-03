@@ -555,7 +555,10 @@ const std::vector<std::string>& Preset::print_options()
         "support_material_contact_distance_type",
         "support_material_contact_distance_top",
         "support_material_contact_distance_bottom",
-        "support_material_buildplate_only", "dont_support_bridges", "notes", 
+        "support_material_buildplate_only", "dont_support_bridges", 
+        // miscellaneous
+        "notes", 
+        "print_custom_variables",
         "complete_objects",
         "complete_objects_one_skirt",
         "complete_objects_one_brim",
@@ -588,6 +591,7 @@ const std::vector<std::string>& Preset::print_options()
         "clip_multipart_objects",
         "over_bridge_flow_ratio",
         "bridge_overlap",
+        "bridge_overlap_min",
         "first_layer_flow_ratio",
         "clip_multipart_objects", "enforce_full_fill_volume", "external_infill_margin", "bridged_infill_margin",
         // compensation
@@ -623,9 +627,10 @@ const std::vector<std::string>& Preset::print_options()
         "thin_walls_overlap",
         "thin_walls_speed",
         "thin_walls_merge",
-        //precision, spoothign
+        //precision, smoothing
         "model_precision",
         "resolution",
+        "resolution_internal",
         "curve_smoothing_precision",
         "curve_smoothing_cutoff_dist",
         "curve_smoothing_angle_convex",
@@ -650,7 +655,9 @@ const std::vector<std::string>& Preset::print_options()
 const std::vector<std::string>& Preset::filament_options()
 {    
     static std::vector<std::string> s_opts {
-        "filament_colour", "filament_diameter", "filament_type", "filament_soluble", "filament_notes",
+        "filament_colour", 
+        "filament_custom_variables",
+        "filament_diameter", "filament_type", "filament_soluble", "filament_notes",
         "filament_max_speed",
         "filament_max_volumetric_speed",
         "filament_max_wipe_tower_speed",
@@ -690,7 +697,7 @@ const std::vector<std::string>& Preset::filament_options()
         "filament_retract_length", "filament_retract_lift", "filament_retract_lift_above", "filament_retract_lift_below", "filament_retract_speed", "filament_deretract_speed", "filament_retract_restart_extra", "filament_retract_before_travel",
         "filament_retract_layer_change", "filament_retract_before_wipe", 
         "filament_seam_gap",
-        "filament_wipe", "filament_wipe_extra_perimeter", "filament_wipe_speed",
+        "filament_wipe", "filament_wipe_only_crossing", "filament_wipe_extra_perimeter", "filament_wipe_speed",
         // Profile compatibility
         "filament_vendor", "compatible_prints", "compatible_prints_condition", "compatible_printers", "compatible_printers_condition", "inherits"
         //merill adds
@@ -741,14 +748,23 @@ const std::vector<std::string>& Preset::printer_options()
             //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.
             "host_type", "print_host", "printhost_apikey", "printhost_cafile", "printhost_port",
             "single_extruder_multi_material", 
+            // custom gcode
             "start_gcode",
             "start_gcode_manual",
             "end_gcode",
             "before_layer_gcode",
             "layer_gcode",
             "toolchange_gcode",
-            "color_change_gcode", "pause_print_gcode", "template_custom_gcode",            "feature_gcode",
-            "between_objects_gcode", "printer_vendor", "printer_model", "printer_variant", "printer_notes", "cooling_tube_retraction",
+            "color_change_gcode", "pause_print_gcode", "template_custom_gcode","feature_gcode",
+            "between_objects_gcode",
+            //printer fields
+            "printer_custom_variables",
+            "printer_vendor",
+            "printer_model", 
+            "printer_variant", 
+            "printer_notes", 
+            // mmu
+            "cooling_tube_retraction",
             "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "max_print_height", 
             "default_print_profile", "inherits",
             "remaining_times",
@@ -1455,7 +1471,7 @@ inline t_config_option_keys deep_diff(const ConfigBase &config_this, const Confi
             && (ignore_phony || !(this_opt->is_phony() && other_opt->is_phony()))
             && ((*this_opt != *other_opt) || (this_opt->is_phony() != other_opt->is_phony())))
         {
-            if (opt_key == "bed_shape" || opt_key == "compatible_prints" || opt_key == "compatible_printers") {
+            if (opt_key == "bed_shape" || opt_key == "compatible_prints" || opt_key == "compatible_printers" || opt_key == "filament_ramming_parameters" || opt_key == "gcode_substitutions") {
                 // Scalar variable, or a vector variable, which is independent from number of extruders,
                 // thus the vector is presented to the user as a single input.
                 // note that thumbnails are not here becasue it has individual # entries
@@ -1485,8 +1501,8 @@ std::vector<std::string> PresetCollection::dirty_options(const Preset *edited, c
     std::vector<std::string> changed;
     if (edited != nullptr && reference != nullptr) {
         changed = deep_compare ?
-                deep_diff(edited->config, reference->config, ignore_phony) :
-                reference->config.diff(edited->config, ignore_phony);
+                deep_diff(edited->config, reference->config, !ignore_phony) :
+                reference->config.diff(edited->config, !ignore_phony);
         // The "compatible_printers" option key is handled differently from the others:
         // It is not mandatory. If the key is missing, it means it is compatible with any printer.
         // If the key exists and it is empty, it means it is compatible with no printer.

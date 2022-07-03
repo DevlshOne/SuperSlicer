@@ -62,7 +62,7 @@ void CalibrationTempDialog::create_geometry(wxCommandEvent& event_args) {
 
     GLCanvas3D::set_warning_freeze(true);
     std::vector<size_t> objs_idx = plat->load_files(std::vector<std::string>{
-            Slic3r::resources_dir()+"/calibration/filament_temp/Smart_compact_temperature_calibration_item.amf"}, true, false, false);
+            (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_temp" / "Smart_compact_temperature_calibration_item.amf").string()}, true, false, false);
 
     assert(objs_idx.size() == 1);
     const DynamicPrintConfig* print_config = this->gui_app->get_tab(Preset::TYPE_FFF_PRINT)->get_config();
@@ -108,16 +108,17 @@ void CalibrationTempDialog::create_geometry(wxCommandEvent& event_args) {
     tower.push_back(model.objects[objs_idx[0]]);
     float zshift = (1 - xyzScale) / 2;
     if (temperature > 175 && temperature < 290 && temperature%5==0) {
-        tower.push_back(add_part(model.objects[objs_idx[0]], Slic3r::resources_dir()+"/calibration/filament_temp/t"+std::to_string(temperature)+".amf",
-            Vec3d{ xyzScale * 5, - xyzScale * 2.5, zshift - xyzScale * 2.5}, Vec3d{ xyzScale, xyzScale, xyzScale * 0.43 }));
+        tower.push_back(add_part(model.objects[objs_idx[0]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_temp" / ("t"+std::to_string(temperature)+".amf")).string(),
+            //Vec3d{ xyzScale * 5, - xyzScale * 2.5, zshift - xyzScale * 2.5}, Vec3d{ xyzScale, xyzScale, xyzScale * 0.43 }));
+            Vec3d{ 8 - xyzScale * 5, -xyzScale * 2.3, xyzScale * (0 * 10 - 2.45) }, Vec3d{ xyzScale, xyzScale, xyzScale * 0.43 }));
     }
     for (int16_t i = 1; i < nb_items; i++) {
-        tower.push_back(add_part(model.objects[objs_idx[0]], Slic3r::resources_dir()+"/calibration/filament_temp/Smart_compact_temperature_calibration_item.amf", 
+        tower.push_back(add_part(model.objects[objs_idx[0]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_temp" / ("Smart_compact_temperature_calibration_item.amf")).string(),
             Vec3d{ 0,0, i * 10 * xyzScale }, Vec3d{ xyzScale, xyzScale * 0.5, xyzScale }));
         int sub_temp = temperature - i * step_temp;
         if (sub_temp > 175 && sub_temp < 290 && sub_temp % 5 == 0) {
-            tower.push_back(add_part(model.objects[objs_idx[0]], Slic3r::resources_dir()+"/calibration/filament_temp/t" + std::to_string(sub_temp) + ".amf",
-                Vec3d{ xyzScale * 5, -xyzScale * 2.5, xyzScale * (i * 10 - 2.5) }, Vec3d{ xyzScale, xyzScale, xyzScale * 0.43 }));
+            tower.push_back(add_part(model.objects[objs_idx[0]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_temp" / ("t" + std::to_string(sub_temp) + ".amf")).string(),
+                Vec3d{ 8 - xyzScale * 5, -xyzScale * 2.3, xyzScale * (i * 10 - 2.5) }, Vec3d{ xyzScale, xyzScale, xyzScale * 0.43 }));
         }
     }
 
@@ -128,7 +129,7 @@ void CalibrationTempDialog::create_geometry(wxCommandEvent& event_args) {
         const ConfigOptionPoints* bed_shape = printer_config->option<ConfigOptionPoints>("bed_shape");
         Vec2d bed_size = BoundingBoxf(bed_shape->values).size();
         Vec2d bed_min = BoundingBoxf(bed_shape->values).min;
-        model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2, bed_min.y() + bed_size.y() / 2, 0 });
+        model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2, bed_min.y() + bed_size.y() / 2, 5 * xyzScale - 5 });
     }
 
     /// --- main config, please modify object config when possible ---

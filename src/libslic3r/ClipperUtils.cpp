@@ -231,7 +231,7 @@ ClipperLib::Paths _offset(ClipperLib::Paths &&input, ClipperLib::EndType endType
         co.ArcTolerance = miterLimit;
     else
         co.MiterLimit = miterLimit;
-    double delta_scaled = delta * float(CLIPPER_OFFSET_SCALE);
+    double delta_scaled = delta * double(CLIPPER_OFFSET_SCALE);
     co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
     co.AddPaths(input, joinType, endType);
     ClipperLib::Paths retval;
@@ -598,6 +598,10 @@ ClipperLib::PolyTree _clipper_do_pl(const ClipperLib::ClipType clipType, const P
     // read input
     ClipperLib::Paths input_subject = Slic3rMultiPoints_to_ClipperPaths(subject);
     ClipperLib::Paths input_clip    = Slic3rMultiPoints_to_ClipperPaths(clip);
+
+    // perform safety offset (before scaling because it scale & unscale)
+    if (safety_offset_) safety_offset(&input_clip);
+
     //scale to have some more precision to do some Y-bugfix
     scaleClipperPolygons(input_subject);
     scaleClipperPolygons(input_clip);
@@ -614,9 +618,6 @@ ClipperLib::PolyTree _clipper_do_pl(const ClipperLib::ClipType clipType, const P
                 lasty = pt.Y;
             }
         }
-
-    // perform safety offset
-    if (safety_offset_) safety_offset(&input_clip);
     
     // init Clipper
     ClipperLib::Clipper clipper;

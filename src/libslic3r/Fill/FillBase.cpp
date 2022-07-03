@@ -84,7 +84,7 @@ Polylines Fill::fill_surface(const Surface *surface, const FillParams &params) c
 // This function possibly increases the spacing, never decreases, 
 // and for a narrow width the increase in spacing may become severe,
 // therefore the adjustment is limited to 20% increase.
-coord_t Fill::_adjust_solid_spacing(const coord_t width, const coord_t distance)
+coord_t Fill::_adjust_solid_spacing(const coord_t width, const coord_t distance, const double factor_max)
 {
     assert(width >= 0);
     assert(distance > 0);
@@ -93,10 +93,9 @@ coord_t Fill::_adjust_solid_spacing(const coord_t width, const coord_t distance)
     coord_t distance_new = (number_of_intervals == 0) ? 
         distance : 
         (coord_t)(((width - EPSILON) / number_of_intervals));
-    const coordf_t factor = coordf_t(distance_new) / coordf_t(distance);
+    const double factor = coordf_t(distance_new) / coordf_t(distance);
     assert(factor > 1. - 1e-5);
     // How much could the extrusion width be increased? By 20%.
-    const coordf_t factor_max = 1.2;
     if (factor > factor_max)
         distance_new = coord_t(floor((coordf_t(distance) * factor_max + 0.5)));
     return distance_new;
@@ -150,20 +149,23 @@ std::pair<float, Point> Fill::_infill_direction(const Surface *surface) const
 
 double Fill::compute_unscaled_volume_to_fill(const Surface* surface, const FillParams& params) const {
     double polyline_volume = 0;
-    for (const ExPolygon& poly : this->no_overlap_expolygons) {
-        polyline_volume += params.flow.height * unscaled(unscaled(poly.area()));
-        double perimeter_gap_usage = params.config->perimeter_overlap.get_abs_value(1);
-        // add external "perimeter gap"
-        double perimeter_round_gap = unscaled(poly.contour.length()) * params.flow.height * (1 - 0.25 * PI) * 0.5;
-        // add holes "perimeter gaps"
-        double holes_gaps = 0;
-        for (auto hole = poly.holes.begin(); hole != poly.holes.end(); ++hole) {
-            holes_gaps += unscaled(hole->length()) * params.flow.height * (1 - 0.25 * PI) * 0.5;
-        }
-        polyline_volume += (perimeter_round_gap + holes_gaps) * perimeter_gap_usage;
-    }
     if (this->no_overlap_expolygons.empty()) {
         polyline_volume = unscaled(unscaled(surface->area())) * params.flow.height;
+    } else {
+        for (const ExPolygon& poly : intersection_ex({ surface->expolygon }, this->no_overlap_expolygons)) {
+            polyline_volume += params.flow.height * unscaled(unscaled(poly.area()));
+            double perimeter_gap_usage = params.config->perimeter_overlap.get_abs_value(1);
+            // add external "perimeter gap"
+            //TODO: use filament_max_overlap to reduce it 
+            //double filament_max_overlap = params.config->get_computed_value("filament_max_overlap", params.extruder - 1);
+            double perimeter_round_gap = unscaled(poly.contour.length()) * params.flow.height * (1 - 0.25 * PI) * 0.5;
+            // add holes "perimeter gaps"
+            double holes_gaps = 0;
+            for (auto hole = poly.holes.begin(); hole != poly.holes.end(); ++hole) {
+                holes_gaps += unscaled(hole->length()) * params.flow.height * (1 - 0.25 * PI) * 0.5;
+            }
+            polyline_volume += (perimeter_round_gap + holes_gaps) * perimeter_gap_usage;
+        }
     }
     return polyline_volume;
 }
@@ -203,20 +205,20 @@ void Fill::fill_surface_extrusion(const Surface *surface, const FillParams &para
         //failsafe, it can happen
         if (mult_flow > 1.3) mult_flow = 1.3;
         if (mult_flow < 0.8) mult_flow = 0.8;
-        BOOST_LOG_TRIVIAL(info) << "Infill process extrude " << extruded_volume << " mm3 for a volume of " << polyline_volume << " mm3 : we mult the flow by " << mult_flow;
+        BOOST_LOG_TRIVIAL(info) << "Layer " << layer_id << ": Fill process extrude " << extruded_volume << " mm3 for a volume of " << polyline_volume << " mm3 : we mult the flow by " << mult_flow;
     }
 
     // Save into layer.
     auto *eec = new ExtrusionEntityCollection();
     /// pass the no_sort attribute to the extrusion path
-    eec->no_sort = this->no_sort();
+    eec->set_can_sort_reverse(!this->no_sort(), !this->no_sort());
     /// add it into the collection
     out.push_back(eec);
     //get the role
     ExtrusionRole good_role = getRoleFromSurfaceType(params, surface);
     /// push the path
     extrusion_entities_append_paths(
-        eec->entities, std::move(polylines),
+        eec->set_entities(), std::move(polylines),
         good_role,
         params.flow.mm3_per_mm() * params.flow_mult * mult_flow,
         (float)(params.flow.width * params.flow_mult * mult_flow),
@@ -228,7 +230,7 @@ void Fill::fill_surface_extrusion(const Surface *surface, const FillParams &para
 
 coord_t Fill::_line_spacing_for_density(float density) const
 {
-    return scale_(this->get_spacing() / density);
+    return scale_t(this->get_spacing() / density);
 }
 
 //FIXME: add recent improvmeent from perimetergenerator: avoid thick gapfill
@@ -267,17 +269,18 @@ Fill::do_gap_fill(const ExPolygons& gapfill_areas, const FillParams& params, Ext
         }
 #endif
 
-        ExtrusionEntityCollection gap_fill = thin_variable_width(polylines_gapfill, erGapFill, params.flow);
-        //set role if needed
-        /*if (params.role != erSolidInfill) {
-            ExtrusionSetRole set_good_role(params.role);
-            gap_fill.visit(set_good_role);
-        }*/
+        ExtrusionEntitiesPtr gap_fill_entities = thin_variable_width(polylines_gapfill, erGapFill, params.flow, scale_t(params.config->get_computed_value("resolution_internal")));
+        ////set role if needed
+        //if (params.role != erSolidInfill) {
+        //    ExtrusionSetRole set_good_role(params.role);
+        //    for(ExtrusionEntity *ptr : gap_fill_entities)
+        //        ptr->visit(set_good_role);
+        //}
         //move them into the collection
-        if (!gap_fill.entities.empty()) {
+        if (!gap_fill_entities.empty()) {
             ExtrusionEntityCollection* coll_gapfill = new ExtrusionEntityCollection();
-            coll_gapfill->no_sort = this->no_sort();
-            coll_gapfill->append(std::move(gap_fill.entities));
+            coll_gapfill->set_can_sort_reverse(!this->no_sort(), !this->no_sort());
+            coll_gapfill->append(std::move(gap_fill_entities));
             coll_out.push_back(coll_gapfill);
         }
     }

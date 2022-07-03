@@ -656,8 +656,11 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection* dependent_
         add_btn(&m_transfer_btn, m_move_btn_id, "paste_menu", Action::Transfer, _L("Transfer"));
     add_btn(&m_discard_btn, m_continue_btn_id, dependent_presets ? "switch_presets" : "exit", Action::Discard, _L("Discard"), false);
     add_btn(&m_save_btn, m_save_btn_id, "save", Action::Save, _L("Save"));
-
+#ifdef __WXGTK__
+    ScalableButton* cancel_btn = new ScalableButton(this, wxID_ANY, "cross", _L("Cancel"), wxDefaultSize, wxDefaultPosition, wxBORDER_DEFAULT, true, 24);
+#else
     ScalableButton* cancel_btn = new ScalableButton(this, wxID_CANCEL, "cross", _L("Cancel"), wxDefaultSize, wxDefaultPosition, wxBORDER_DEFAULT, true, 24);
+#endif
     buttons->Add(cancel_btn, 1, wxLEFT|wxRIGHT, 5);
     cancel_btn->SetFont(btn_font);
     cancel_btn->Bind(wxEVT_BUTTON, [this](wxEvent&) { this->EndModal(wxID_CANCEL); });
@@ -922,8 +925,14 @@ static wxString get_string_value(std::string opt_key, const DynamicPrintConfig& 
             config.opt<ConfigOptionFloats>(opt_key)->get_at(opt_idx);
         return double_to_string(val, opt->precision);
     }
-    case coString:
-        return from_u8(config.opt_string(opt_key));
+    case coString: {
+        //character '<' '>' create strange problems for wxWidget, so remove them (only for the display)
+        std::string str = config.opt_string(opt_key);
+        boost::erase_all(str, "<");
+        boost::erase_all(str, ">");
+        return from_u8(str);
+    }
+
     case coStrings: {
         const ConfigOptionStrings* strings = config.opt<ConfigOptionStrings>(opt_key);
         if (strings) {

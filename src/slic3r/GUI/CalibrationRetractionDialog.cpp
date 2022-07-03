@@ -131,7 +131,7 @@ void CalibrationRetractionDialog::create_geometry(wxCommandEvent& event_args) {
 
     std::vector<std::string> items;
     for (size_t i = 0; i < nb_items; i++)
-        items.emplace_back(Slic3r::resources_dir() + "/calibration/retraction/retraction_calibration.amf");
+        items.emplace_back((boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "retraction" / "retraction_calibration.amf").string());
     std::vector<size_t> objs_idx = plat->load_files(items, true, false, false);
 
 
@@ -178,14 +178,14 @@ void CalibrationRetractionDialog::create_geometry(wxCommandEvent& event_args) {
         part_tower.emplace_back();
         int mytemp = temp - temp_decr * id_item;
         if (mytemp <= 285 && mytemp >= 180 && mytemp % 5 == 0) {
-            add_part(model.objects[objs_idx[id_item]], Slic3r::resources_dir() + "/calibration/filament_temp/t" + std::to_string(mytemp) + ".amf",
-                Vec3d{ 0,0, scale * 0.2 - 4.8 }, Vec3d{ scale,scale,scale });
+            add_part(model.objects[objs_idx[id_item]], (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "filament_temp" / ("t" + std::to_string(mytemp) + ".amf")).string(),
+                Vec3d{ 0,0, scale * 0.0 - 4.8 }, Vec3d{ scale,scale,scale });
             model.objects[objs_idx[id_item]]->volumes[1]->rotate(PI / 2, Vec3d(0, 0, 1));
             model.objects[objs_idx[id_item]]->volumes[1]->rotate(-PI / 2, Vec3d(1, 0, 0));
         }
         for (int num_retract = 0; num_retract < nb_retract; num_retract++) {
             part_tower.back().push_back(add_part(model.objects[objs_idx[id_item]], 
-                Slic3r::resources_dir() + "/calibration/retraction/retraction_calibration_pillar.amf", 
+                (boost::filesystem::path(Slic3r::resources_dir()) / "calibration" / "retraction" / "retraction_calibration_pillar.amf").string(),
                 Vec3d{ 0,0,scale * 0.7 - 0.3 + scale * num_retract }, Vec3d{ scale,scale,scale }));
         }
     }
@@ -199,7 +199,7 @@ void CalibrationRetractionDialog::create_geometry(wxCommandEvent& event_args) {
     Vec2d bed_min = BoundingBoxf(bed_shape->values).min;
     float offset = 4 + 26 * scale * 1 + extruder_clearance_radius->value + brim_width + (brim_width > extruder_clearance_radius->value ? brim_width - extruder_clearance_radius->value : 0);
     if (nb_items == 1) {
-        model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2, bed_min.y() + bed_size.y() / 2, 0 });
+        model.objects[objs_idx[0]]->translate({ bed_min.x() + bed_size.x() / 2, bed_min.y() + bed_size.y() / 2, zscale_number });
     } else {
         has_to_arrange = true;
     }
@@ -231,13 +231,15 @@ void CalibrationRetractionDialog::create_geometry(wxCommandEvent& event_args) {
         model.objects[objs_idx[i]]->config.set_key_value("print_temperature", new ConfigOptionInt(int(temp - temp_decr * i)));
         //set retraction override
         size_t num_part = 0;
+        const int mytemp = temp - temp_decr * i;
+        const int extra_vol = (mytemp <= 285 && mytemp >= 180 && mytemp % 5 == 0) ? 2 : 1;
         for (ModelObject* part : part_tower[i]) {
-            model.objects[objs_idx[i]]->volumes[num_part + 2]->config.set_key_value("print_retract_length", new ConfigOptionFloat(retraction_start + num_part * retraction_steps));
-            model.objects[objs_idx[i]]->volumes[num_part + 2]->config.set_key_value("small_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
-            model.objects[objs_idx[i]]->volumes[num_part + 2]->config.set_key_value("perimeter_speed", new ConfigOptionFloat(std::min(external_perimeter_speed, perimeter_speed)));
-            model.objects[objs_idx[i]]->volumes[num_part + 2]->config.set_key_value("external_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
-            model.objects[objs_idx[i]]->volumes[num_part + 2]->config.set_key_value("small_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
-            //model.objects[objs_idx[i]]->volumes[num_part + 1]->config.set_key_value("infill_speed", new ConfigOptionFloat(std::min(print_config->option<ConfigOptionFloat>("infill_speed")->value, 10.*scale)));
+            model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("print_retract_length", new ConfigOptionFloat(retraction_start + num_part * retraction_steps));
+            model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("small_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
+            model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("perimeter_speed", new ConfigOptionFloat(std::min(external_perimeter_speed, perimeter_speed)));
+            model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("external_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
+            model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("small_perimeter_speed", new ConfigOptionFloatOrPercent(external_perimeter_speed, false));
+            //model.objects[objs_idx[i]]->volumes[num_part + extra_vol]->config.set_key_value("infill_speed", new ConfigOptionFloat(std::min(print_config->option<ConfigOptionFloat>("infill_speed")->value, 10.*scale)));
             num_part++;
         }
     }

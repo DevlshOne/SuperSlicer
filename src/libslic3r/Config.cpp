@@ -664,6 +664,15 @@ bool ConfigBase::set_deserialize_raw(const t_config_option_key &opt_key_src, con
     return success;
 }
 
+const ConfigOptionDef* ConfigBase::get_option_def(const t_config_option_key& opt_key) const {
+    // Get option definition.
+    const ConfigDef* def = this->def();
+    if (def == nullptr)
+        throw NoDefinitionException(opt_key);
+    const ConfigOptionDef* opt_def = def->get(opt_key);
+    return opt_def;
+}
+
 // Return an absolute value of a possibly relative config variable.
 // For example, return absolute infill extrusion width, either from an absolute value, or relative to the layer height.
 double ConfigBase::get_computed_value(const t_config_option_key &opt_key, int extruder_id) const
@@ -674,12 +683,6 @@ double ConfigBase::get_computed_value(const t_config_option_key &opt_key, int ex
         std::stringstream ss; ss << "You can't define an option that need " << opt_key << " without defining it!";
         throw std::runtime_error(ss.str());
     }
-    // Get option definition.
-    const ConfigDef* def = this->def();
-    if (def == nullptr)
-        throw NoDefinitionException(opt_key);
-    const ConfigOptionDef* opt_def = def->get(opt_key);
-    assert(opt_def != nullptr);
 
     if (!raw_opt->is_vector()) {
         if (raw_opt->type() == coFloat)
@@ -697,19 +700,20 @@ double ConfigBase::get_computed_value(const t_config_option_key &opt_key, int ex
         if (raw_opt->type() == coPercent) {
             cast_opt = static_cast<const ConfigOptionPercent*>(raw_opt);
         }
-        if (opt_def != nullptr) {
-            //if over no other key, it's most probably a simple %
-            if (opt_def->ratio_over == "")
-                return cast_opt->get_abs_value(1);
-            // Compute absolute value over the absolute value of the base option.
-            //FIXME there are some ratio_over chains, which end with empty ratio_with.
-            // For example, XXX_extrusion_width parameters are not handled by get_abs_value correctly.
-            if (!opt_def->ratio_over.empty() && opt_def->ratio_over != "depends")
-                return cast_opt->get_abs_value(this->get_computed_value(opt_def->ratio_over));
+        const ConfigOptionDef* opt_def = get_option_def(opt_key);
+        if (opt_def == nullptr) // maybe a placeholder?
+            return cast_opt->get_abs_value(1);
+        //if over no other key, it's most probably a simple %
+        if (opt_def->ratio_over == "")
+            return cast_opt->get_abs_value(1);
+        // Compute absolute value over the absolute value of the base option.
+        //FIXME there are some ratio_over chains, which end with empty ratio_with.
+        // For example, XXX_extrusion_width parameters are not handled by get_abs_value correctly.
+        if (!opt_def->ratio_over.empty() && opt_def->ratio_over != "depends")
+            return cast_opt->get_abs_value(this->get_computed_value(opt_def->ratio_over, extruder_id));
 
-            std::stringstream ss; ss << "ConfigBase::get_abs_value(): " << opt_key << " has no valid ratio_over to compute of";
-            throw ConfigurationError(ss.str());
-        }
+        std::stringstream ss; ss << "ConfigBase::get_abs_value(): " << opt_key << " has no valid ratio_over to compute of";
+        throw ConfigurationError(ss.str());
     } else {
         // check if it's an extruder_id array
         const ConfigOptionVectorBase* vector_opt = static_cast<const ConfigOptionVectorBase*>(raw_opt);
@@ -735,25 +739,31 @@ double ConfigBase::get_computed_value(const t_config_option_key &opt_key, int ex
         }
         if (idx >= 0) {
             if (raw_opt->type() == coFloats || raw_opt->type() == coInts || raw_opt->type() == coBools)
-                return vector_opt->getFloat(extruder_id);
+                return vector_opt->getFloat(idx);
             if (raw_opt->type() == coFloatsOrPercents) {
                 const ConfigOptionFloatsOrPercents* opt_fl_per = static_cast<const ConfigOptionFloatsOrPercents*>(raw_opt);
-                if (!opt_fl_per->values[extruder_id].percent)
-                    return opt_fl_per->values[extruder_id].value;
+                if (!opt_fl_per->values[idx].percent)
+                    return opt_fl_per->values[idx].value;
 
-                if (opt_def->ratio_over.empty())
+                const ConfigOptionDef* opt_def = get_option_def(opt_key);
+                if (opt_def == nullptr) // maybe a placeholder?
                     return opt_fl_per->get_abs_value(extruder_id, 1);
+                if (opt_def->ratio_over.empty())
+                    return opt_fl_per->get_abs_value(idx, 1);
                 if (opt_def->ratio_over != "depends")
-                    return opt_fl_per->get_abs_value(extruder_id, this->get_computed_value(opt_def->ratio_over, extruder_id));
+                    return opt_fl_per->get_abs_value(idx, this->get_computed_value(opt_def->ratio_over, idx));
                 std::stringstream ss; ss << "ConfigBase::get_abs_value(): " << opt_key << " has no valid ratio_over to compute of";
                 throw ConfigurationError(ss.str());
             }
             if (raw_opt->type() == coPercents) {
                 const ConfigOptionPercents* opt_per = static_cast<const ConfigOptionPercents*>(raw_opt);
-                if (opt_def->ratio_over.empty())
+                const ConfigOptionDef* opt_def = get_option_def(opt_key);
+                if (opt_def == nullptr) // maybe a placeholder?
                     return opt_per->get_abs_value(extruder_id, 1);
+                if (opt_def->ratio_over.empty())
+                    return opt_per->get_abs_value(idx, 1);
                 if (opt_def->ratio_over != "depends")
-                    return opt_per->get_abs_value(extruder_id, this->get_computed_value(opt_def->ratio_over, extruder_id));
+                    return opt_per->get_abs_value(idx, this->get_computed_value(opt_def->ratio_over, idx));
                 std::stringstream ss; ss << "ConfigBase::get_abs_value(): " << opt_key << " has no valid ratio_over to compute of";
                 throw ConfigurationError(ss.str());
             }
@@ -810,18 +820,26 @@ ConfigSubstitutions ConfigBase::load_from_ini(const std::string &file, ForwardCo
         return this->load(tree, compatibility_rule);
     } catch (const ConfigurationError &e) {
         throw ConfigurationError(format("Failed loading configuration file \"%1%\": %2%", file, e.what()));
-}
+    }
 }
 
 ConfigSubstitutions ConfigBase::load(const boost::property_tree::ptree &tree, ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
     ConfigSubstitutionContext substitutions_ctxt(compatibility_rule);
     for (const boost::property_tree::ptree::value_type &v : tree) {
+        t_config_option_key opt_key = v.first;
         try {
-            t_config_option_key opt_key = v.first;
             this->set_deserialize(opt_key, v.second.get_value<std::string>(), substitutions_ctxt);
         } catch (UnknownOptionException & /* e */) {
             // ignore
+        } catch (BadOptionValueException & e) {
+            if (compatibility_rule == ForwardCompatibilitySubstitutionRule::Disable)
+                throw e;
+            // log the error
+            const ConfigDef* def = this->def();
+            if (def == nullptr) throw e;
+            const ConfigOptionDef* optdef = def->get(opt_key);
+            substitutions_ctxt.substitutions.emplace_back(optdef, v.second.get_value<std::string>(), ConfigOptionUniquePtr(optdef->default_value->clone()));
         }
     }
     return std::move(substitutions_ctxt.substitutions);
@@ -915,6 +933,14 @@ size_t ConfigBase::load_from_gcode_string(const char* str, ConfigSubstitutionCon
         }
         catch (UnknownOptionException & /* e */) {
             // ignore
+        } catch (BadOptionValueException & e) {
+            if (substitutions.rule == ForwardCompatibilitySubstitutionRule::Disable)
+                throw e;
+            // log the error
+            const ConfigDef* def = this->def();
+            if (def == nullptr) throw e;
+            const ConfigOptionDef* optdef = def->get(std::string(key, key_end));
+            substitutions.substitutions.emplace_back(optdef, std::string(value, end), ConfigOptionUniquePtr(optdef->default_value->clone()));
         }
         end = start;
     }

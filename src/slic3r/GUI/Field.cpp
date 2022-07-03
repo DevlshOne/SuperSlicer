@@ -15,6 +15,9 @@
 #include <wx/tooltip.h>
 #include <wx/notebook.h>
 #include <wx/richtooltip.h>
+#ifdef __WXGTK2__
+#include <wx/tglbtn.h>
+#endif
 #include <wx/tokenzr.h>
 #include <boost/algorithm/string/predicate.hpp>
 #include "OG_CustomCtrl.hpp"
@@ -413,104 +416,120 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
         break;
     case coFloatsOrPercents:
     case coFloatOrPercent: {
-        if (!str.IsEmpty() && str.Last() != '%')
-        {
-            double val = 0.;
-            // Replace the first occurence of comma in decimal number.
-            str.Replace(",", ".", false);
-
-            // remove space and "mm" substring, if any exists
-            str.Replace(" ", "", true);
-            str.Replace("m", "", true);
-
-            if (m_opt.nullable && str == na_value()) {
-                val = ConfigOptionFloatsNullable::nil_value();
-                str = "nan";
-            } else if (!str.ToCDouble(&val)) {
-                if (!check_value) {
-                    m_value.clear();
-                    break;
-                }
-                show_error(m_parent, _(L("Invalid numeric input.")));
-                set_value(double_to_string(val, m_opt.precision), true);
-            } else {
-
-                //at least check min, as we can want a 0 min
-                if (m_opt.min > val)
-                {
-                    if (!check_value) {
-                        m_value.clear();
-                        break;
-                    }
-                    show_error(m_parent, _(L("Input value is out of range")));
-                    if (m_opt.min > val) val = m_opt.min;
-                    set_value(double_to_string(val, m_opt.precision), true);
-                } else if (m_value.empty() || std::string(str.ToUTF8().data()) != boost::any_cast<std::string>(m_value)) {
-                    bool not_ok = (m_opt.sidetext.rfind("mm/s") != std::string::npos && val > m_opt.max);
-                    if( !not_ok && m_opt.max_literal.value != 0 )
-                        if (m_opt.max_literal.percent) {
-                            const DynamicPrintConfig& printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        if (!str.IsEmpty()) {
+            if ("infill_overlap" == m_opt_id && m_last_validated_value != str) {
+                bool bad = false;
+                double val = 0.;
+                if (str.Last() != '%') {
+                    if (str.ToCDouble(&val)) {
+                        const DynamicPrintConfig& printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
                             const std::vector<double>& nozzle_diameters = printer_config.option<ConfigOptionFloats>("nozzle_diameter")->values;
                             double nozzle_diameter = 0;
                             for (double diameter : nozzle_diameters)
                                 nozzle_diameter = std::max(nozzle_diameter, diameter);
-                            if (m_opt.max_literal.value > 0)
-                                not_ok = val > nozzle_diameter * m_opt.max_literal.value;
-                            else
-                                not_ok = val < nozzle_diameter * (-m_opt.max_literal.value);
-                        }else{
-                            if(m_opt.max_literal.value > 0)
-                                not_ok = val > m_opt.max_literal.value;
-                            else
-                                not_ok = val < -m_opt.max_literal.value;
+                        if (val > nozzle_diameter / 2) {
+                            bad = true;
                         }
-                    if (not_ok) {
+                    }
+                } else {
+                    if (str.substr(0, str.size() - 1).ToCDouble(&val)) {
+                        if (val >= 50) {
+                            bad = true;
+                        }
+                    }
+                }
+                if (bad && check_value) {
+                    const wxString msg_text = from_u8(_u8L("The infill / perimeter encroachment can't be higher than half of the perimeter width.\n"
+                        "Are you sure to use this value?"));
+                    wxMessageDialog dialog(m_parent, msg_text, _L("Parameter validation") + ": " + m_opt_id, wxICON_WARNING | wxYES | wxNO);
+                    auto ret = dialog.ShowModal();
+                    if (ret == wxID_NO) {
+                        str = from_u8("49%");
+                        m_last_validated_value = str;
+                        set_value(str, false);
+                        str = m_last_validated_value;
+                    }
+                    m_last_validated_value = str;
+                }
+            }
+            else if (str.Last() != '%') {
+                double val = 0.;
+                // Replace the first occurence of comma in decimal number.
+                str.Replace(",", ".", false);
 
-                        //    if (
-                        //    (
-                        //        (m_opt.sidetext.rfind("mm/s") != std::string::npos && val > m_opt.max) 
-                        //        || 
-                        //        (m_opt.sidetext.rfind("mm ") != std::string::npos && val > m_opt.max_literal)
-                        //    ) 
-                        //    &&
-                        //        (m_value.empty() || std::string(str.ToUTF8().data()) != boost::any_cast<std::string>(m_value)))
-                        //{
-                        //    if (m_opt.opt_key.find("extrusion_width") != std::string::npos || m_opt.opt_key.find("extrusion_spacing") != std::string::npos) {
-                        //        const DynamicPrintConfig& printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-                        //        const std::vector<double>& nozzle_diameters = printer_config.option<ConfigOptionFloats>("nozzle_diameter")->values;
-                        //        double nozzle_diameter = 0;
-                        //        for (double diameter : nozzle_diameters)
-                        //            nozzle_diameter = std::max(nozzle_diameter, diameter);
-                        //        if (val < nozzle_diameter * 10) {
-                        //            m_value = std::string(str.ToUTF8().data());
-                        //            break;
-                        //        }
-                        //    }
-                            //TODO: chack for infill_overlap from diameter% => allow max_literal to be a %
+                // remove space and "mm" substring, if any exists
+                str.Replace(" ", "", true);
+                str.Replace("m", "", true);
 
+                if (m_opt.nullable && str == na_value()) {
+                    val = ConfigOptionFloatsNullable::nil_value();
+                    str = "nan";
+                } else if (!str.ToCDouble(&val)) {
+                    if (!check_value) {
+                        m_value.clear();
+                        break;
+                    }
+                    show_error(m_parent, _(L("Invalid numeric input.")));
+                    set_value(double_to_string(val, m_opt.precision), true);
+                } else {
+
+                    //at least check min, as we can want a 0 min
+                    if (m_opt.min > val)
+                    {
                         if (!check_value) {
                             m_value.clear();
                             break;
                         }
+                        show_error(m_parent, _(L("Input value is out of range")));
+                        if (m_opt.min > val) val = m_opt.min;
+                        set_value(double_to_string(val, m_opt.precision), true);
+                    } else if (m_value.empty() || std::string(str.ToUTF8().data()) != boost::any_cast<std::string>(m_value)) {
+                        bool not_ok = (m_opt.sidetext.rfind("mm/s") != std::string::npos && val > m_opt.max);
+                        if (!not_ok && m_opt.max_literal.value != 0) {
+                            if (m_opt.max_literal.percent) {
+                                const DynamicPrintConfig& printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+                                const std::vector<double>& nozzle_diameters = printer_config.option<ConfigOptionFloats>("nozzle_diameter")->values;
+                                double nozzle_diameter = 0;
+                                for (double diameter : nozzle_diameters)
+                                    nozzle_diameter = std::max(nozzle_diameter, diameter);
+                                if (m_opt.max_literal.value > 0)
+                                    not_ok = val > nozzle_diameter * m_opt.max_literal.value;
+                                else
+                                    not_ok = val < nozzle_diameter* (-m_opt.max_literal.value);
+                            } else {
+                                if (m_opt.max_literal.value > 0)
+                                    not_ok = val > m_opt.max_literal.value;
+                                else
+                                    not_ok = val < -m_opt.max_literal.value;
+                            }
+                        }
+                        if (not_ok && m_last_validated_value != str) {
+                            if (!check_value) {
+                                m_value.clear();
+                                break;
+                            }
 
-                        bool infill_anchors = m_opt.opt_key == "infill_anchor" || m_opt.opt_key == "infill_anchor_max";
+                            bool infill_anchors = m_opt.opt_key == "infill_anchor" || m_opt.opt_key == "infill_anchor_max";
 
-                        const std::string sidetext = m_opt.sidetext.rfind("mm/s") != std::string::npos ? "mm/s" : "mm";
-                        const wxString stVal = double_to_string(val, m_opt.precision);
-                        const wxString msg_text = from_u8((boost::format(_utf8(L("Do you mean %s%% instead of %s %s?\n"
-                            "Select YES if you want to change this value to %s%%, \n"
-                            "or NO if you are sure that %s %s is a correct value."))) % stVal % stVal % sidetext % stVal % stVal % sidetext).str());
-                        wxMessageDialog dialog(m_parent, msg_text, _(L("Parameter validation")) + ": " + m_opt_id, wxICON_WARNING | wxYES | wxNO);
-                        if ((!infill_anchors || val > 100) && dialog.ShowModal() == wxID_YES) {
-                            set_value(from_u8((boost::format("%s%%") % stVal).str()), false/*true*/);
-                            str += "%%";
-                        } else
-                            set_value(stVal, false); // it's no needed but can be helpful, when inputted value contained "," instead of "."
+                            const std::string sidetext = m_opt.sidetext.rfind("mm/s") != std::string::npos ? "mm/s" : "mm";
+                            const wxString stVal = double_to_string(val, m_opt.precision);
+                            const wxString msg_text = from_u8((boost::format(_u8L("Do you mean %s%% instead of %s %s?\n"
+                                "Select YES if you want to change this value to %s%%, \n"
+                                "or NO if you are sure that %s %s is a correct value.")) % stVal % stVal % sidetext % stVal % stVal % sidetext).str());
+                            wxMessageDialog dialog(m_parent, msg_text, _L("Parameter validation") + ": " + m_opt_id, wxICON_WARNING | wxYES | wxNO);
+                            if ((!infill_anchors || val > 100) && dialog.ShowModal() == wxID_YES) {
+                                str += "%";
+                                m_last_validated_value = str;
+                                set_value(str, false/*true*/);
+                                str = m_last_validated_value;
+                            } else
+                                set_value(stVal, false); // it's no needed but can be helpful, when inputted value contained "," instead of "."
+                            m_last_validated_value = str;
+                        }
                     }
                 }
             }
         }
-
         m_value = std::string(str.ToUTF8().data());
         break;
     }
@@ -859,22 +878,62 @@ void CheckBox::BUILD() {
 
     m_last_meaningful_value = static_cast<unsigned char>(check_value);
 
-	// Set Label as a string of at least one space simbol to correct system scaling of a CheckBox 
-	auto temp = new wxCheckBox(m_parent, wxID_ANY, wxString(" "), wxDefaultPosition, size); 
-	temp->SetFont(Slic3r::GUI::wxGetApp().normal_font());
-	if (!wxOSX) temp->SetBackgroundStyle(wxBG_STYLE_PAINT);
-	temp->SetValue(check_value);
-	if (m_opt.readonly) temp->Disable();
-
-	temp->Bind(wxEVT_CHECKBOX, ([this](wxCommandEvent e) {
-        m_is_na_val = false;
-	    on_change_field();
-	}), temp->GetId());
-
-	// recast as a wxWindow to fit the calling convention
-	window = dynamic_cast<wxWindow*>(temp);
+#ifdef __WXGTK2__
+    //gtk2 can't resize checkboxes, so we are using togglable buttons instead
+    if (m_em_unit > 14) {
+        size = wxSize(def_width_thinner() * m_em_unit / 2, def_width_thinner() * m_em_unit / 2);
+        auto temp = new wxToggleButton(m_parent, wxID_ANY, wxString(" "), wxDefaultPosition, size, wxCHK_2STATE);
+        temp->Bind(wxEVT_TOGGLEBUTTON, ([this, temp](wxCommandEvent e) {
+            m_is_na_val = false;
+            if (temp->GetValue())
+                temp->SetLabel("X");
+            else
+                temp->SetLabel("");
+            on_change_field();
+        }), temp->GetId());
+        // recast as a wxWindow to fit the calling convention
+        window = dynamic_cast<wxWindow*>(temp);
+    }
+    else
+#endif
+    {
+        // Set Label as a string of at least one space simbol to correct system scaling of a CheckBox
+        auto temp = new wxCheckBox(m_parent, wxID_ANY, wxString(" "), wxDefaultPosition, size, wxCHK_2STATE);
+        temp->Bind(wxEVT_CHECKBOX, ([this](wxCommandEvent e) {
+            m_is_na_val = false;
+            on_change_field();
+        }), temp->GetId());
+        // recast as a wxWindow to fit the calling convention
+        window = dynamic_cast<wxWindow*>(temp);
+        temp->SetValue(check_value);
+    }
+    window->SetFont(Slic3r::GUI::wxGetApp().normal_font());
+	if (!wxOSX) window->SetBackgroundStyle(wxBG_STYLE_PAINT);
+	if (m_opt.readonly) window->Enable(false);
+    
 
     this->set_tooltip(check_value ? "true" : "false");
+}
+
+void CheckBox::set_widget_value(bool new_val)
+{
+    wxCheckBox* chk = dynamic_cast<wxCheckBox*>(window);
+    if (chk != nullptr) {
+        chk->SetValue(new_val);
+    }
+#ifdef __WXGTK2__
+    else
+    {
+        wxToggleButton* tgl = dynamic_cast<wxToggleButton*>(window);
+        if (tgl) {
+            tgl->SetValue(new_val);
+            if (new_val)
+                tgl->SetLabel("X");
+            else
+                tgl->SetLabel("");
+        }
+    }
+#endif
 }
 
 void CheckBox::set_value(const boost::any& value, bool change_event)
@@ -884,10 +943,10 @@ void CheckBox::set_value(const boost::any& value, bool change_event)
         m_is_na_val = boost::any_cast<unsigned char>(value) == ConfigOptionBoolsNullable::nil_value();
         if (!m_is_na_val)
             m_last_meaningful_value = value;
-        dynamic_cast<wxCheckBox*>(window)->SetValue(m_is_na_val ? false : boost::any_cast<unsigned char>(value) != 0);
+        set_widget_value(m_is_na_val ? false : boost::any_cast<unsigned char>(value) != 0);
     }
     else
-        dynamic_cast<wxCheckBox*>(window)->SetValue(boost::any_cast<bool>(value));
+        set_widget_value(boost::any_cast<bool>(value));
     m_disable_change_event = false;
 }
 
@@ -895,7 +954,7 @@ void CheckBox::set_last_meaningful_value()
 {
     if (m_opt.nullable) {
         m_is_na_val = false;
-        dynamic_cast<wxCheckBox*>(window)->SetValue(boost::any_cast<unsigned char>(m_last_meaningful_value) != 0);
+        set_widget_value(boost::any_cast<unsigned char>(m_last_meaningful_value) != 0);
         on_change_field();
     }
 }
@@ -904,7 +963,7 @@ void CheckBox::set_na_value()
 {
     if (m_opt.nullable) {
         m_is_na_val = true;
-        dynamic_cast<wxCheckBox*>(window)->SetValue(false);
+        set_widget_value(false);
         on_change_field();
     }
 }
@@ -912,7 +971,18 @@ void CheckBox::set_na_value()
 boost::any& CheckBox::get_value()
 {
 // 	boost::any m_value;
-	bool value = dynamic_cast<wxCheckBox*>(window)->GetValue();
+    bool value = false;
+    wxCheckBox* chk = dynamic_cast<wxCheckBox*>(window);
+    if (chk != nullptr) {
+        value = chk->GetValue();
+    }
+#ifdef __WXGTK2__
+    else
+    {
+        wxToggleButton* tgl = dynamic_cast<wxToggleButton*>(window);
+        if (tgl) value = tgl->GetValue();
+    }
+#endif
 	if (m_opt.type == coBool)
 		m_value = static_cast<bool>(value);
 	else
@@ -924,8 +994,17 @@ void CheckBox::msw_rescale()
 {
     Field::msw_rescale();
 
-    wxCheckBox* field = dynamic_cast<wxCheckBox*>(window);
-    field->SetMinSize(wxSize(-1, int(1.5f*field->GetFont().GetPixelSize().y +0.5f)));
+    wxCheckBox* chk = dynamic_cast<wxCheckBox*>(window);
+    if (chk != nullptr) {
+        chk->SetMinSize(wxSize(-1, int(1.5f * chk->GetFont().GetPixelSize().y + 0.5f)));
+    }
+#ifdef __WXGTK2__
+    else
+    { //a bit useless as it's a windows-only func. To have a correct thing, you have to del the previous window and create a new one anyway.
+        wxToggleButton* tgl = dynamic_cast<wxToggleButton*>(window);
+        if (tgl) tgl->SetMinSize(wxSize(def_width_thinner() * m_em_unit / 2, def_width_thinner() * m_em_unit / 2));
+    }
+#endif
 }
 
 

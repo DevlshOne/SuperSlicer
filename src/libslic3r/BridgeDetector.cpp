@@ -114,22 +114,84 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
                     Point((coord_t)round(c * bbox.max.x() - s * y), (coord_t)round(c * y + s * bbox.max.x()))));
         }
 
+        //create boundingbox for anchor regions
+        std::vector<BoundingBox> anchor_bb;
+        for (ExPolygon& poly : this->_anchor_regions) {
+            anchor_bb.emplace_back(poly.contour.bounding_box());
+        }
+
         //compute stat on line with anchors, and their lengths.
         BridgeDirection& c = candidates[i_angle];
         std::vector<coordf_t> dist_anchored;
         {
             Lines clipped_lines = intersection_ln(lines, clip_area);
             for (size_t i = 0; i < clipped_lines.size(); ++i) {
+                // this can be called 100 000 time per detect_angle, please optimise
                 const Line &line = clipped_lines[i];
                 bool good_line = false;
-                if (expolygons_contain(this->_anchor_regions, line.a) && expolygons_contain(this->_anchor_regions, line.b)) {
-                    //check that it isn't always inside
-                    Lines lines = intersection_ln(line, to_polygons(this->_anchor_regions));
-                    good_line = lines.size() > 1;
+                coordf_t len = line.length();
+                //is anchored?
+                size_t line_a_anchor_idx = -1;
+                size_t line_b_anchor_idx = -1;
+                for (int i = 0; i < _anchor_regions.size(); ++i) {
+                    ExPolygon& poly = this->_anchor_regions[i];
+                    BoundingBox& polybb = anchor_bb[i];
+                    if (polybb.contains(line.a) && poly.contains(line.a)) { // using short-circuit evaluation to test boundingbox and only then the other
+                        line_a_anchor_idx = i;
+                    }
+                    if (polybb.contains(line.b) && poly.contains(line.b)) { // using short-circuit evaluation to test boundingbox and only then the other
+                        line_b_anchor_idx = i;
+                    }
+                    if (line_a_anchor_idx < clipped_lines.size() && line_b_anchor_idx < clipped_lines.size())
+                        break;
+                }
+                //check if the anchor search has been successful
+                if ( (line_a_anchor_idx < clipped_lines.size()) & (line_b_anchor_idx < clipped_lines.size())) { // this 'if' isn't very effective (culls ~ 10% on a benchy) but it's almost free to compute
+                    good_line = true;
+                    //test if it's not a fake bridge
+                    if (line_a_anchor_idx == line_b_anchor_idx) {
+                        good_line = false;
+                        //check that the line go out of the anchor into the briding area 
+                        // don't call intersection_ln here, as even if we succeed to limit the number of candidates to ~100, here we can have hundreds of lines, so that means dozen of thousands of calls (or more)!
+                        // add some points (at least the middle) to test, it's quick
+                        Point middle_point = line.midpoint();
+                        for (int i = 0; i < _anchor_regions.size(); ++i) {
+                            ExPolygon& poly = this->_anchor_regions[i];
+                            BoundingBox& polybb = anchor_bb[i];
+                            if (!polybb.contains(middle_point) || !poly.contains(middle_point)) { // using short-circuit evaluation to test boundingbox and only then the other
+                                good_line = true;
+                                break;
+                            }
+                        }
+                        // if still bad, the line is long enough to warrant two more test point? (1/2000 on a benchy)
+                        if (!good_line && len > this->spacing * 10) {
+                            //now test with to more points
+                            Line middle_line;
+                            middle_line.a = (line.a + middle_point) / 2;
+                            middle_line.b = (line.b + middle_point) / 2;
+                            for (int i = 0; i < _anchor_regions.size(); ++i) {
+                                ExPolygon& poly = this->_anchor_regions[i];
+                                BoundingBox& polybb = anchor_bb[i];
+                                if (!polybb.contains(middle_line.a) || !poly.contains(middle_line.a)) { // using short-circuit evaluation to test boundingbox and only then the other
+                                    good_line = true;
+                                    break;
+                                }
+                                if (!polybb.contains(middle_line.b) || !poly.contains(middle_line.b)) { // using short-circuit evaluation to test boundingbox and only then the other
+                                    good_line = true;
+                                    break;
+                                }
+                            }
+                        }
+                        // If the line is still bad and is a long one, use the more costly intersection_ln. This case is rare enough to swallow the cost. (1/10000 on a benchy)
+                        if (!good_line && len > this->spacing * 40) {
+                            //now test with intersection_ln
+                            Lines lines = intersection_ln(line, to_polygons(this->_anchor_regions));
+                            good_line = lines.size() > 1;
+                        }
+                    }
                 }
                 if(good_line) {
-                    // This line could be anchored.
-                    coordf_t len = line.length();
+                    // This line could be anchored at both side and goes over the void to bridge it in its middle.
                     //store stats
                     c.total_length_anchored += len;
                     c.max_length_anchored = std::max(c.max_length_anchored, len);
@@ -137,7 +199,6 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
                     dist_anchored.push_back(len);
                 } else {
                     // this line could NOT be anchored.
-                    coordf_t len = line.length();
                     c.total_length_free += len;
                     c.max_length_free = std::max(c.max_length_free, len);
                     c.nb_lines_free++;
@@ -193,7 +254,7 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
                 for (size_t i = 0; i < clipped_lines.size(); ++i) {
                     const Line& line = clipped_lines[i];
                     if (expolygons_contain(this->_anchor_regions, line.a) || expolygons_contain(this->_anchor_regions, line.b)) {
-                        // This line has one anchor
+                        // This line has one anchor (or is totally anchored)
                         coordf_t len = line.length();
                         //store stats
                         c.total_length_anchored += len;
@@ -258,7 +319,7 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
         double ratio_max = 1 - double(c.max_length_anchored - min_max_length) / (double)std::max(1., max_max_length - min_max_length);
         c.coverage += 15 * ratio_max;
         //bonus for perimeter dir
-        if (c.along_perimeter)
+        if (c.along_perimeter_length > 0)
             c.coverage += 5;
 
     }
@@ -293,8 +354,21 @@ std::vector<BridgeDetector::BridgeDirection> BridgeDetector::bridge_direction_ca
     // we also test angles of each bridge contour
     {
         Lines lines = to_lines(this->expolygons);
-        for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line)
-            angles.emplace_back(line->direction(), true);
+        //if many lines, only takes the bigger ones.
+        float mean_sqr_size = 0;
+        if (lines.size() > 200) {
+            for (int i = 0; i < 200; i++) {
+                mean_sqr_size += (float)lines[i].a.distance_to_square(lines[i].b);
+            }
+            mean_sqr_size /= 200;
+            for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line) {
+                float dist_sqr = line->a.distance_to_square(line->b);
+                if (dist_sqr > mean_sqr_size)
+                    angles.emplace_back(line->direction(), dist_sqr);
+            }
+        }else
+            for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line)
+                angles.emplace_back(line->direction(), line->a.distance_to_square(line->b));
     }
     
     /*  we also test angles of each open supporting edge
@@ -304,17 +378,56 @@ std::vector<BridgeDetector::BridgeDirection> BridgeDetector::bridge_direction_ca
             angles.emplace_back(Line(edge.first_point(), edge.last_point()).direction());
     
     // remove duplicates
-    double min_resolution = PI/(4*180.0);  // /180 = 1 degree
-    std::sort(angles.begin(), angles.end());
+    std::sort(angles.begin(), angles.end(), [](const BridgeDirection& bt1, const BridgeDirection& bt2) { return bt1.angle < bt2.angle; });
+
+    //first delete angles too close to an angle from a perimeter  
     for (size_t i = 1; i < angles.size(); ++i) {
-        if (Slic3r::Geometry::directions_parallel(angles[i].angle, angles[i-1].angle, min_resolution)) {
-            angles.erase(angles.begin() + i);
-            --i;
+        if (angles[i - 1].along_perimeter_length > 0 && angles[i].along_perimeter_length == 0)
+            if (Slic3r::Geometry::directions_parallel(angles[i].angle, angles[i - 1].angle, this->resolution)) {
+                angles.erase(angles.begin() + i);
+                --i;
+                continue;
+            }
+        if (angles[i].along_perimeter_length > 0 && angles[i - 1].along_perimeter_length == 0)
+            if (Slic3r::Geometry::directions_parallel(angles[i].angle, angles[i - 1].angle, this->resolution)) {
+                angles.erase(angles.begin() + (i-1));
+                --i;
+                continue;
+            }
+    }
+    //then delete angle to close to each other (high resolution)
+    double min_resolution = this->resolution / 8;
+    for (size_t i = 1; i < angles.size(); ++i) {
+        if (Slic3r::Geometry::directions_parallel(angles[i].angle, angles[i - 1].angle, min_resolution)) {
+            // keep the longest of the two.
+            if (angles[i].along_perimeter_length < angles[i - 1].along_perimeter_length) {
+                angles.erase(angles.begin() + i);
+                --i;
+            } else {
+                angles.erase(angles.begin() + (i-1));
+                --i;
+            }
+        }
+    }
+    //then, if too much angles, delete more
+    while (angles.size() > 200) {
+        min_resolution *= 2;
+        for (size_t i = 1; i < angles.size(); ++i) {
+            if (Slic3r::Geometry::directions_parallel(angles[i].angle, angles[i - 1].angle, min_resolution)) {
+                // keep the longest of the two.
+                if (angles[i].along_perimeter_length < angles[i - 1].along_perimeter_length) {
+                    angles.erase(angles.begin() + i);
+                    --i;
+                } else {
+                    angles.erase(angles.begin() + (i - 1));
+                    --i;
+                }
+            }
         }
     }
     /*  compare first value with last one and remove the greatest one (PI) 
         in case they are parallel (PI, 0) */
-    if (Slic3r::Geometry::directions_parallel(angles.front().angle, angles.back().angle, min_resolution))
+    if (angles.size() > 1 && Slic3r::Geometry::directions_parallel(angles.front().angle, angles.back().angle, min_resolution))
         angles.pop_back();
 
     return angles;
